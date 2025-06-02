@@ -1,0 +1,4 @@
+openai>=1.12
+pyyaml
+python-dotenv
+pytest

@@ -1,0 +1,5 @@
+# secrets & artefacts
+.env
+results.*
+__pycache__/
+*.py[cod]
