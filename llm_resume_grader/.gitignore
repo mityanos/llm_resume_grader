@@ -1,5 +1,7 @@
 # secrets & artefacts
+.venv/
 .env
 results.*
 __pycache__/
 *.py[cod]
+

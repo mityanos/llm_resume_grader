@@ -1,4 +1,3 @@
-## 6  `main.py`
 #!/usr/bin/env python3
 """
 LLM-powered résumé grader (single-message edition).
@@ -15,7 +14,7 @@ import re
 import time
 from glob import glob
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 from dotenv import load_dotenv
@@ -67,7 +66,7 @@ def safe_chat(
     messages: list[dict[str, str]],
     model: str,
     retry_max: int,
-    **params,                       # temperature, top_p, max_tokens, …
+    **params,  # temperature, top_p, max_tokens, …
 ) -> str:
     for attempt in range(1, retry_max + 1):
         try:
@@ -79,21 +78,76 @@ def safe_chat(
             return resp.choices[0].message.content
         except (RateLimitError, APIError) as err:
             wait = 1.5 * attempt
-            logging.warning("OpenAI error: %s (retry %d/%d, sleep %.1fs)",
-                            err, attempt, retry_max, wait)
+            logging.warning(
+                "OpenAI error: %s (retry %d/%d, sleep %.1fs)",
+                err,
+                attempt,
+                retry_max,
+                wait,
+            )
             time.sleep(wait)
     raise RuntimeError("OpenAI failed after retries")
 
 
+def extract_json_object(raw: str) -> Optional[dict[str, Any]]:
+    """
+    Pulls first balanced `{…}` object out of a string (Markdown-safe).
+    Returns `None` on failure.
+    """
+    # 1) Убираем обёртки типа ```json ... ``` (игнорируем регистр). 
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
+
+    depth = None
+    start = None
+    # 2) Проходим посимвольно, отслеживая глубину вложенных фигурных скобок
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth is None:
+                depth = 0
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth is not None:
+                depth -= 1
+                # 3) Если дошли до закрывающей скобки, сбалансированной на нулевой глубине
+                if depth == 0 and start is not None:
+                    snippet = text[start : i + 1]
+                    try:
+                        return json.loads(snippet)
+                    except json.JSONDecodeError as e:
+                        logging.warning(
+                            "json.parse_failed: %s\nsnippet: %s",
+                            e,
+                            snippet[:60],
+                        )
+                        return None
+    return None
+
+
 def extract_grade_expl(answer: str) -> tuple[str, str]:
-    try:
-        data = json.loads(answer)
-        return data.get("grade", "?"), data.get("grade_explanation", "")[:500]
-    except Exception:
-        m = re.search(r"Grade:\s*([A-D])\s*[-–]\s*(.+)$", answer, re.S)
-        if m:
-            return m.group(1), m.group(2)[:500]
-    return "?", answer[:500]
+    """
+    Попытаться найти валидный JSON-объект внутри строки `answer`.
+    Если удалось, разобрать и вернуть поля "grade" и "grade_explanation".
+    Иначе — откатиться к regexp-парсингу вида "Grade: X – explanation".
+    Если и это не сработает, вернуть "?" и первые 500 символов сырого ответа.
+    """
+    # 1) Пытаемся извлечь JSON-объект через глубокий парсер
+    parsed = extract_json_object(answer)
+    if parsed is not None:
+        grade = parsed.get("grade", "?")
+        expl = parsed.get("grade_explanation", "") or parsed.get("explanation", "")
+        return grade, expl.strip().replace("\n", " ")[:500]
+
+    # 2) Регулярка: "Grade: A – короткое объяснение"
+    regex = re.compile(r"Grade:\s*([A-D])\s*[-–]\s*(.+)", re.IGNORECASE | re.DOTALL)
+    m = regex.search(answer)
+    if m:
+        grade = m.group(1).upper()
+        expl = m.group(2).strip()
+        return grade, expl[:500]
+
+    # 3) Если ни JSON, ни regexp не прокатили — fallback
+    return "?", answer.strip().replace("\n", " ")[:500]
 
 
 def render_md(rows: List[Dict[str, str]]) -> str:
@@ -118,34 +172,28 @@ def main() -> None:
 
     sys_prompt = load_system_prompt(cfg["paths"]["system_prompt"])
     files = sorted(glob(cfg["paths"]["candidates_glob"]))
-    if not files:
-        logging.error("No résumé files in %s", cfg["paths"]["candidates_glob"])
-        return
 
-    scale   = cfg["grading"]["scale"]
-    params  = cfg["llm"]["params"]
-    retry   = cfg["llm"]["retry_max"]
-    model   = cfg["llm"]["model"]
-
-    results: List[Dict[str, str]] = []
-
-    for f in files:
-        cand_doc = read_text(f)
-        cid = candidate_id(cand_doc, Path(f).stem)
+    results: List[Dict[str, Any]] = []
+    for path in files:
+        cand_doc = read_text(path)
+        cid = candidate_id(cand_doc, Path(path).stem)
 
         messages = build_message(sys_prompt, cand_doc)
-        try:
-            answer = safe_chat(client, messages, model=model,
-                               retry_max=retry, **params)
-        except Exception as e:
-            logging.error("❌ %s: %s", cid, e)
-            answer = "API ERROR"
+        answer = safe_chat(
+            client=client,
+            messages=messages,
+            model=cfg["llm"]["model"],
+            retry_max=cfg["llm"]["retry_max"],
+            **cfg["llm"]["params"],
+        )
 
         grade, expl = extract_grade_expl(answer)
+        score = cfg["grading"]["scale"].get(grade, 0)
+
         results.append({
             "candidate": cid,
             "grade": grade,
-            "score": scale.get(grade, 0),
+            "score": score,
             "explanation": expl,
             "raw_response": answer,
         })
