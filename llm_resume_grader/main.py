@@ -156,8 +156,9 @@ def render_md(rows: List[Dict[str, str]]) -> str:
         "|-----------|-------|-------------|",
     ]
     for r in rows:
+        # убираем переносы строк и |, чтобы не сломать Markdown-таблицу
         expl = r["explanation"].replace("\n", " ").replace("|", " ")
-        lines.append(f"| {r['candidate']} | {r['grade']} | {expl[:120]} |")
+        lines.append(f"| {r['candidate']} | {r['grade']} | {expl} |")
     return "\n".join(lines)
 
 
