@@ -1,9 +1,16 @@
-# secrets & artefacts
-.venv/
-.env
-results.*
+# macOS
+.DS_Store
+
+# Python
 __pycache__/
 *.py[cod]
 *.pyc
+
+# Virtual environments
+.venv/
+
+# Env files
+.env
+
+# Scripts (если хочешь игнорить всю папку scripts)
 scripts/
-.DS_Store
