@@ -1,4 +1,5 @@
-openai>=1.12
+# llm_resume_grader/requirements.txt
+openai==1.12.0
 pyyaml
 python-dotenv
 pytest

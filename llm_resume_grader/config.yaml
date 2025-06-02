@@ -1,21 +1,24 @@
+# 002 - llm_resume_grader/config.yaml
 llm:
-  model: "gpt-4o-mini-2024-07-18"
+  model: "gpt-4.1-mini-2025-04-14"
 
-  # sampling / generation params (passed verbatim to OpenAI)
   params:
-    temperature: 0.0
+    temperature: 0.2
     top_p: 1.0
     frequency_penalty: 0
     presence_penalty: 0
     max_tokens: 1000
 
-  retry_max: 6          # max attempts on 429 / 5xx
+  retry_max: 6
 
 grading:
   scale: {A: 4, B: 3, C: 2, D: 1}
 
+
 paths:
-  system_prompt: "system_prompt.md"
-  candidates_glob: "candidates/*.md"
-  out_md: "results.md"
-  out_json: "results.json"
+  candidates_glob: "data/input/candidates/*.md"
+  system_prompt:    "data/input/system_prompt.md"
+  out_json:         "data/output/results.json"
+  out_md_summary:   "data/output/results_summary.md"
+  out_md_full:      "data/output/results_full.md"
+  candidate_md_dir: "data/output/candidates_md"

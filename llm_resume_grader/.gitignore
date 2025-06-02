@@ -4,4 +4,5 @@
 results.*
 __pycache__/
 *.py[cod]
-
+*.pyc
+scripts/
